@@ -61,6 +61,7 @@ public class UserController {
     @PostMapping("/logout")
     public Result logout(){
         // TODO 实现登出功能
+        System.out.println("测试");
         return Result.fail("功能没有完成!");
     }
 
