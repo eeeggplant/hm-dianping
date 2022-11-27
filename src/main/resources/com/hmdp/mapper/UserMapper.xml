@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.hmdp.mapper.UserMapper">
+    <select id="listByIds" resultType="com.hmdp.dto.UserDTO">
+        select v.id, v.phone, v.password, v.nick_name, v.icon, v.create_time, v.update_time
+        from hmdp.tb_user v
+        <where>
+            <foreach item="item" collection="list"
+                     open="id in (" separator="," close=")">
+                #{item}
+            </foreach>
+            <foreach item="item" collection="list"
+                     open="order by field(id, " separator="," close=")">
+                #{item}
+            </foreach>
+        </where>
+    </select>
+</mapper>
