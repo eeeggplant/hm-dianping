@@ -1,5 +1,6 @@
 package com.hmdp.config;
 
+import ch.qos.logback.classic.pattern.MessageConverter;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -17,7 +18,7 @@ public class DirectRabbitConfig {
          * 3、exclusive: 是否独享、排外的。如果设置为true，定义为排他队列。则只有创建者可以使用此队列。也就是private私有的。
          * 4、autoDelete: 是否自动删除。也就是临时队列。当最后一个消费者断开连接后，会自动删除。
          * */
-        return new Queue(RabbitMQConfig.RABBITMQ_NAME, true, false, false);
+        return new Queue(RabbitMQConfig.RABBITMQ_QUEUE_NAME, true, false, false);
     }
 
     @Bean
