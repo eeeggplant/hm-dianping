@@ -12,6 +12,7 @@ spring:
     host: 8.134.129.156
     port: 6379
     password: qiezi2001
+    timeout: 5000
     lettuce:
       pool:
         max-active: 10

@@ -19,7 +19,5 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     void createVoucherOrder(VoucherOrder voucherId);
 
-    boolean saveToQueue(Long voucherId, long orderId, Long userId, String stockKey, String orderKey);
-
     void handleVoucherOrder(VoucherOrder voucherOrder);
 }

@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -79,30 +80,36 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
+
     @Override
     public Result seckillVoucher(Long voucherId) {
         long orderId = redisIdWorker.nextId("order");
         Long userId = UserHolder.getUserDTO().getId();
-        String stockKey = "seckill:stock:" + voucherId;
-        String orderKey = "seckill:order:" + voucherId;
         // 获取代理对象
         proxy = (IVoucherOrderService) AopContext.currentProxy();
         RLock lock = redissonClient.getLock("lock:order:" + voucherId);
         boolean isLock = false;
         try {
-            isLock = lock.tryLock(5, 5, TimeUnit.SECONDS);
+            isLock = lock.tryLock(10, 5, TimeUnit.SECONDS);
             if (isLock) {
-                int stock = Integer.parseInt(stringRedisTemplate.opsForValue().get(stockKey));
-                // 购买资格判断
-                if (stock < 0) {
-                    return Result.fail("库存不足！");
+                Long result = stringRedisTemplate.execute(
+                        SECKILL_SCRIPT,
+                        Collections.emptyList(),
+                        voucherId.toString(), userId.toString(), String.valueOf(orderId)
+                );
+                if (result == 1 || result == 2) {
+                    return Result.fail(result == 1 ? "库存不足!" : "不能重复下单！");
                 }
-                if (stringRedisTemplate.opsForSet().isMember(orderKey, userId.toString())) {
-                    return Result.fail("不能重复下单！");
-                }
+
                 // 有购买资格，把下单信息保存到阻塞队列
-                boolean isSuccess = proxy.saveToQueue(voucherId, orderId, userId, stockKey, orderKey);
-                if(isSuccess) {
+                SeckillVoucherMsg seckillVoucherMsg = new SeckillVoucherMsg(orderId, userId, voucherId);
+                if(rabbitMQService.sendMsg(seckillVoucherMsg)) {
                     return Result.ok(orderId);
                 }
             }
@@ -117,23 +124,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.fail("下单失败！");
     }
 
-    @Override
-    @Transactional
-    public boolean saveToQueue(Long voucherId, long orderId, Long userId, String stockKey, String orderKey) {
-        // 扣库存
-        stringRedisTemplate.opsForValue().decrement(stockKey);
-        // 保存用户
-        stringRedisTemplate.opsForSet().add(orderKey, userId.toString());
-        // 添加到队列
-        SeckillVoucherMsg seckillVoucherMsg = new SeckillVoucherMsg(orderId, userId, voucherId);
-        return rabbitMQService.sendMsg(seckillVoucherMsg);
-    }
-
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public void createVoucherOrder(VoucherOrder voucherOrder) {
         // 5.一人一单
-//        Long userId = UserHolder.getUserDTO().getId();
         Long userId = voucherOrder.getUserId();
 //        Long userId = 1010L;
         synchronized (userId.toString()) {
