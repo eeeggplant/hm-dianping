@@ -93,32 +93,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = UserHolder.getUserDTO().getId();
         // 获取代理对象
         proxy = (IVoucherOrderService) AopContext.currentProxy();
-        RLock lock = redissonClient.getLock("lock:order:" + voucherId);
-        boolean isLock = false;
-        try {
-            isLock = lock.tryLock(10, 5, TimeUnit.SECONDS);
-            if (isLock) {
-                Long result = stringRedisTemplate.execute(
-                        SECKILL_SCRIPT,
-                        Collections.emptyList(),
-                        voucherId.toString(), userId.toString(), String.valueOf(orderId)
-                );
-                if (result == 1 || result == 2) {
-                    return Result.fail(result == 1 ? "库存不足!" : "不能重复下单！");
-                }
-
-                // 有购买资格，把下单信息保存到阻塞队列
-                SeckillVoucherMsg seckillVoucherMsg = new SeckillVoucherMsg(orderId, userId, voucherId);
-                if(rabbitMQService.sendMsg(seckillVoucherMsg)) {
-                    return Result.ok(orderId);
-                }
+        synchronized (userId.toString()) {
+            Long result = stringRedisTemplate.execute(
+                    SECKILL_SCRIPT,
+                    Collections.emptyList(),
+                    voucherId.toString(), userId.toString(), String.valueOf(orderId)
+            );
+            if (result == 1 || result == 2) {
+                return Result.fail(result == 1 ? "库存不足!" : "不能重复下单！");
             }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        } finally {
-            if (lock.isLocked() && lock.isHeldByCurrentThread()) {
-                lock.unlock();
+
+            // 有购买资格，把下单信息保存到阻塞队列
+            SeckillVoucherMsg seckillVoucherMsg = new SeckillVoucherMsg(orderId, userId, voucherId);
+            if(rabbitMQService.sendMsg(seckillVoucherMsg)) {
+                return Result.ok(orderId);
             }
         }
         return Result.fail("下单失败！");
